@@ -41,6 +41,8 @@
 #include <visp/vpMeterPixelConversion.h>
 #include <visp/vpDisplay.h>
 
+#include <ros/ros.h>
+
 template<typename T>
   class VVSPoseEstimator : public PoseEstimator
   {
@@ -66,6 +68,7 @@ template<typename T>
     VVSPoseEstimator(CameraObjectPose<T> *camobject);
 
     virtual vpHomogeneousMatrix computePose();
+    virtual vpHomogeneousMatrix computePoseFromDescriptors(const std::vector<vpColVector> &descriptors);
 
     virtual double getError()
     {
@@ -112,6 +115,7 @@ template<typename T>
       detect_outliers_ = flag;
     }
 
+    void project_model(Object *o, const vpHomogeneousMatrix &cMo);
     void drawModel(Object *o, const vpImage<T> &I);
     void drawSearchPixels(Object *o, const vpImage<T> &I);
     void drawMatchedPixels(Object *o, const vpImage<T> &I);
@@ -120,10 +124,12 @@ template<typename T>
     {
     }
 
+
   protected:
     void project_edges(Object *o, const vpHomogeneousMatrix &cMo);
     void select_visible_edges(Object *o, const vpHomogeneousMatrix &cMo);
     void find_edges(Object *o);
+    void find_edges_from_descriptors(Object *o, const std::vector<vpColVector> &descriptors);
     void discard_bad_confidence_points(Object *o, vpMatrix &D, int index = 0);
 
     vpMatrix &compute_s(Object *o);
@@ -142,7 +148,7 @@ template<typename T>
     setS(S_);
     setLambda(0.8);
 
-    setDetectOutliers(false);
+    setDetectOutliers(true);
     setIval(5);
     setDistance(8);
     setMinGrad(4);
@@ -160,11 +166,7 @@ vpHomogeneousMatrix VVSPoseEstimator<T>::computePose()
   vpMatrix Ls, s;
 
   //project the model in view v, find distance to real edges
-  project_edges(camobject_->object, camobject_->getObjectPose());
-
-  select_visible_edges(camobject_->object, camobject_->getObjectPose());
-
-  find_edges(camobject_->object);
+  project_model(camobject_->object, camobject_->getObjectPose());
 
   //compute distance feature vector and interaction matrix
   Ls = compute_Ls(camobject_->object);
@@ -230,6 +232,88 @@ vpHomogeneousMatrix VVSPoseEstimator<T>::computePose()
 }
 
 template<typename T>
+vpHomogeneousMatrix VVSPoseEstimator<T>::computePoseFromDescriptors(const std::vector<vpColVector> &descriptors)
+{
+  //TODO: put inside a loop that repeats until error<tol or timeout
+  vpMatrix Ls, s;
+
+  //project the model in view v, find distance to real edges
+  project_edges(camobject_->object, camobject_->getObjectPose());
+  select_visible_edges(camobject_->object, camobject_->getObjectPose());
+  find_edges_from_descriptors(camobject_->object, descriptors);
+
+  //compute distance feature vector and interaction matrix
+  Ls = compute_Ls(camobject_->object);
+  s = compute_s(camobject_->object);
+
+  if (detect_outliers_)
+  {
+    D_.resize(s.getRows(), s.getRows());
+
+    //M-estimator
+    double emed = 0; //median of the error
+    for (std::size_t i = 0; i < s.getRows(); i++)
+    {
+      emed = emed + fabs(s[i][0]);
+    }
+
+    emed = emed / s.getRows();
+    double deltai[s.getRows()];
+    double aux_med_deltai = 0, medsigma = 0;
+    for (std::size_t i = 0; i < s.getRows(); i++)
+    {
+      double ui, tukeyi = 0;
+
+      //deltai
+      deltai[i] = s[i][0] - emed;
+      medsigma += fabs(deltai[i] - med_deltai_);
+      aux_med_deltai += deltai[i];
+
+      //ui
+      ui = deltai[i] / sigma_;
+      static const double C = 4.6851; //constant for the tukey's function
+      if (fabs(ui) <= C)
+        tukeyi = ui * pow(1 - pow(ui / C, 2), 2); //tukey's function
+      if (ui != 0)
+        D_[i][i] = tukeyi / ui;
+      else
+        D_[i][i] = 1;
+    }
+
+    med_deltai_ = aux_med_deltai / s.getRows();
+    medsigma /= s.getRows();
+    sigma_ = 1.48 * medsigma; //Median Absolute Deviation robust statistic (MAD)
+
+    discard_bad_confidence_points(camobject_->object, D_);
+
+    Ls =  D_ * Ls;
+    s =  D_ * s;
+  }
+
+  // control law
+  vpVelocityTwistMatrix V(camobject_->cMo);
+  vpMatrix Vm = V;
+  vpMatrix A = Vm * S_;
+  vpMatrix vm = -lambda_ * A * (Ls * A).pseudoInverse() * s;
+
+  //update cMo estimation
+  vpHomogeneousMatrix cnMc(-vm[0][0], -vm[1][0], -vm[2][0], -vm[3][0], -vm[4][0], -vm[5][0]);
+  camobject_->cMo = cnMc * camobject_->cMo;
+
+  error_ = vm.euclideanNorm();
+
+  return camobject_->cMo;
+}
+
+template<typename T>
+void VVSPoseEstimator<T>::project_model(Object *o, const vpHomogeneousMatrix &cMo)
+{
+  project_edges(o, cMo);
+  select_visible_edges(o, cMo);
+  find_edges(o);
+}
+
+template<typename T>
   void VVSPoseEstimator<T>::project_edges(Object *o, const vpHomogeneousMatrix &cMo)
   {
     EdgesModel *m = dynamic_cast<EdgesModel*>(o->model->geometry);
@@ -275,6 +359,7 @@ template<typename T>
 template<typename T>
   void VVSPoseEstimator<T>::find_edges(Object *o)
   {
+    ROS_WARN("find_edges called");
     EdgesModel *m = dynamic_cast<EdgesModel*>(o->model->geometry);
 
     //project the selected model edges, find distance to real edges
@@ -286,6 +371,39 @@ template<typename T>
                                 distance_);
 //      dynamic_cast<EdgesModel*>(o->model->geometry)->edges_list[i]->find(camobject_->view, camobject_->camera->cparams, ival_, CM_);
         m->edges_list[i]->find(camobject_->view, camobject_->camera->cparams, ival_);
+      }
+    }
+
+    for (std::size_t i = 0; i < o->linkedTo.size(); ++i)
+    {
+      find_edges(o->linkedTo[i]->getNext());
+    }
+  }
+
+template<typename T>
+  void VVSPoseEstimator<T>::find_edges_from_descriptors(Object *o, const std::vector<vpColVector> &descriptors)
+  {
+    EdgesModel *m = dynamic_cast<EdgesModel*>(o->model->geometry);
+
+    //project the selected model edges, find distance to real edges
+    for (std::size_t i = 0; i < m->edges_list.size(); ++i)
+    {
+      if (m->edges_list[i]->active)
+      {
+        std::vector<vpColVector> edge_descriptors;
+        std::cerr << std::endl << "Edges descriptors for edge " << i <<  std::endl;
+        for (std::size_t d = 0; d  <descriptors.size(); ++d)
+        {
+          if (descriptors[d][0] == i)
+          {
+            std::cerr << "  - " << descriptors[d].t() << std::endl;
+            edge_descriptors.push_back(descriptors[d]);
+          }
+        }
+
+        m->edges_list[i]->split(camobject_->view.getCols(), camobject_->view.getRows(), camobject_->camera->cparams,
+                                distance_);
+        m->edges_list[i]->find_from_descriptor(camobject_->view, camobject_->camera->cparams, ival_, edge_descriptors);
       }
     }
 
@@ -309,6 +427,7 @@ template<typename T>
         {
           if (m->edges_list[i]->points[j].maxgrad < mingrad_)
           {
+            ROS_WARN_STREAM("Discarding " << i << " " << j << " because of small gradient " << m->edges_list[i]->points[j].maxgrad);
             D[index][index] = 0;
           }
           index++;

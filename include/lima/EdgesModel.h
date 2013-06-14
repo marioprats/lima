@@ -101,6 +101,8 @@ public:
   /** finds the real point in the image along the normal n */
   void find_rp(vpImage<unsigned char> &I, vpColVector &n, int ival);
   void find_rp(vpImage<vpRGBa> &I, vpColVector &n, int ival);
+  void find_rp(vpImage<unsigned char> &I, vpColVector &n, int ival, vpColVector &descriptor);
+  void find_rp(vpImage<vpRGBa> &I, vpColVector &n, int ival, vpColVector &descriptor);
 
   /** finds the real point in the image along the normal n using an oriented mask */
   void find_rp_ConvolutionMatrix(vpImage<unsigned char> & I, ConvolutionMatrix *CM, vpColVector &n, double theta,
@@ -111,6 +113,10 @@ public:
 
   /** Computes the distance feature in projective coordinates */
   void compute_distance(vpLine &line);
+
+  /** Compute edge descriptor */
+  vpColVector compute_edge_descriptor(vpImage<unsigned char> &I, vpColVector &n, unsigned int size);
+  vpColVector compute_edge_descriptor(vpImage<vpRGBa> &I, vpColVector &n, unsigned int size);
 
   ~point2D()
   {
@@ -143,6 +149,9 @@ public:
   /** Find the edge in the image using simple search along the normal*/
   void find(vpImage<unsigned char> &I, vpCameraParameters &c, int ival);
   void find(vpImage<vpRGBa> &I, vpCameraParameters &c, int ival);
+
+  void find_from_descriptor(vpImage<unsigned char> &I, vpCameraParameters &c, int ival, const std::vector<vpColVector> &edge_descriptors);
+  void find_from_descriptor(vpImage<vpRGBa> &I, vpCameraParameters &c, int ival, const std::vector<vpColVector> &edge_descriptors);
 
   /** Find the edge in the image using oriented gradient masks*/
   void find(vpImage<unsigned char> &I, vpCameraParameters &c, int ival, ConvolutionMatrix * CM);

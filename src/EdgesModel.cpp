@@ -36,6 +36,7 @@
 #include <string.h>
 #include <math.h>
 #include <stdio.h>
+#include <ros/ros.h>
 
 ConvolutionMatrix::ConvolutionMatrix(int tam, int num)
 {
@@ -93,6 +94,7 @@ void point2D::compute_distance(vpLine &line)
 
 void point2D::find_rp(vpImage<unsigned char> &I, vpColVector &n, int ival)
 {
+  ROS_WARN("find_rp called");
   //compute a set of pixels where to search for the gradient or image discontinuity
   spoints.clear();
   int pindex = -1;
@@ -131,8 +133,117 @@ void point2D::find_rp(vpImage<unsigned char> &I, vpColVector &n, int ival)
   rp = maxp;
 }
 
+void point2D::find_rp(vpImage<unsigned char> &I, vpColVector &n, int ival, vpColVector &descriptor)
+{
+  //compute a set of pixels where to search for the descriptor
+  spoints.clear();
+  static vpColVector cp(2); //current point
+  for (int i = -ival; i <= ival; ++i)
+  {
+    cp = p + i * n;
+    cp[0] = vpMath::round(cp[0]);
+    cp[1] = vpMath::round(cp[1]);
+    if (cp[0] < I.getWidth() && cp[0] > 0 && cp[1] > 0 && cp[1] < I.getHeight())
+    {
+      spoints.push_back(cp);
+    }
+  }
+
+  static double g = 0;
+  double min_ssd = std::numeric_limits<double>::max();
+  std::size_t min_ssd_index = 0;
+  for (std::size_t i = 0; i < spoints.size(); ++i)
+  {
+    double ssd_i = 0;
+    for (std::size_t d = 0 ; d < descriptor.getRows(); ++d)
+    {
+      cp = spoints[i] + ((int)d - (int)descriptor.getRows() / 2.0) * n;
+      cp[0] = vpMath::round(cp[0]);
+      cp[1] = vpMath::round(cp[1]);
+      if (cp[0] < I.getWidth() && cp[0] > 0 && cp[1] > 0 && cp[1] < I.getHeight())
+      {
+        ssd_i += pow( I[(int)cp[1]][(int)cp[0]] - descriptor[d], 2 );
+      }
+      else
+      {
+        ssd_i += pow( 0 - descriptor[d], 2 );
+      }
+    }
+    ssd_i = sqrt(ssd_i);
+
+    if (ssd_i < min_ssd)
+    {
+      min_ssd = ssd_i;
+      min_ssd_index = i;
+    }
+  }
+  maxgrad = std::numeric_limits<double>::max();
+  rp = spoints[min_ssd_index];
+}
+
+void point2D::find_rp(vpImage<vpRGBa> &I, vpColVector &n, int ival, vpColVector &descriptor)
+{
+  //compute a set of pixels where to search for the descriptor
+  spoints.clear();
+  static vpColVector cp(2); //current point
+  for (int i = -ival; i <= ival; ++i)
+  {
+    cp = p + i * n;
+    cp[0] = vpMath::round(cp[0]);
+    cp[1] = vpMath::round(cp[1]);
+    if (cp[0] < I.getWidth() && cp[0] > 0 && cp[1] > 0 && cp[1] < I.getHeight())
+    {
+      spoints.push_back(cp);
+    }
+  }
+
+  std::cerr << "Searching " << descriptor.t() << std::endl << " along ";
+  for (std::size_t i = 0; i < spoints.size(); ++i)
+  {
+    std::cerr <<  (unsigned int)((I[(int)spoints[i][1]][(int)spoints[i][0]].R + I[(int)spoints[i][1]][(int)spoints[i][0]].G + I[(int)spoints[i][1]][(int)spoints[i][0]].B) / 3.0) << " ";
+  }
+  std::cerr << std::endl;
+  
+  static double g = 0;
+  double min_ssd = std::numeric_limits<double>::max();
+  std::size_t min_ssd_index = 0;
+  std::cerr << " minsd ";
+  for (std::size_t i = 0; i < spoints.size(); ++i)
+  {
+    double ssd_i = 0;
+    for (std::size_t d = 2 ; d < descriptor.getRows(); ++d)
+    {
+      cp = spoints[i] + (d - (descriptor.getRows() - 2) / 2.0) * n;
+      cp[0] = vpMath::round(cp[0]);
+      cp[1] = vpMath::round(cp[1]);
+      if (cp[0] < I.getWidth() && cp[0] > 0 && cp[1] > 0 && cp[1] < I.getHeight())
+      {
+        unsigned int grey_value = (unsigned int)((I[(int)cp[1]][(int)cp[0]].R + I[(int)cp[1]][(int)cp[0]].G + I[(int)cp[1]][(int)cp[0]].B) / 3.0);
+        ssd_i += pow( grey_value - descriptor[d], 2 );
+      }
+      else
+      {
+        ssd_i += pow( 0 - descriptor[d], 2 );
+      }
+    }
+    ssd_i = sqrt(ssd_i);
+    std::cerr << ssd_i << " ";
+    if (ssd_i < min_ssd)
+    {
+      min_ssd = ssd_i;
+      min_ssd_index = i;
+    }
+  }
+
+  std::cerr << std::endl << " min_index is " << min_ssd_index << std::endl << std::endl;
+
+  maxgrad = std::numeric_limits<double>::max();
+  rp = spoints[min_ssd_index];
+}
+
 void point2D::find_rp(vpImage<vpRGBa> &I, vpColVector &n, int ival)
 {
+  ROS_WARN("find_rp called");
   //compute a set of pixels where to search for the gradient or image discontinuity
   spoints.clear();
   int pindex = -1;
@@ -247,6 +358,62 @@ void point2D::find_rp_ConvolutionMatrix(vpImage<unsigned char> &I, ConvolutionMa
   rp = spoints[positions[pos]];
 }
 
+vpColVector point2D::compute_edge_descriptor(vpImage<unsigned char> &I, vpColVector &n, unsigned int size)
+{
+  vpColVector output;
+  static vpColVector cp(2); //current point
+  unsigned int max_intensity = 0;
+  unsigned int min_intensity = 255;
+  for (int i = -size / 2.0; i <= size / 2.0; ++i)
+  {
+    cp = p + i * n;
+    cp[0] = vpMath::round(cp[0]);
+    cp[1] = vpMath::round(cp[1]);
+    if (cp[0] < I.getWidth() && cp[0] > 0 && cp[1] > 0 && cp[1] < I.getHeight())
+    {
+      unsigned int image_intensity = I[(int)cp[1]][(int)cp[0]];
+      output.stack(image_intensity);
+      if (image_intensity < min_intensity) min_intensity = image_intensity;
+      if (image_intensity > max_intensity) max_intensity = image_intensity;
+    }
+  }
+//  for (std::size_t i = 0; i < output.getRows(); ++i)
+//  {
+//    output[i] = (output[i] - min_intensity) / (max_intensity - min_intensity);
+//  }
+
+  return output;
+}
+
+vpColVector point2D::compute_edge_descriptor(vpImage<vpRGBa> &I, vpColVector &n, unsigned int size)
+{
+  vpColVector output(0);
+  static vpColVector cp(2); //current point
+  unsigned int max_intensity = 0;
+  unsigned int min_intensity = 255;
+  for (int i = -(int)size / 2.0; i <= size / 2.0; ++i)
+  {
+    cp = p + i * n;
+    cp[0] = vpMath::round(cp[0]);
+    cp[1] = vpMath::round(cp[1]);
+    if (cp[0] < I.getWidth() && cp[0] > 0 && cp[1] > 0 && cp[1] < I.getHeight())
+    {
+      unsigned int image_intensity = (unsigned int)((I[(int)cp[1]][(int)cp[0]].R + I[(int)cp[1]][(int)cp[0]].G + I[(int)cp[1]][(int)cp[0]].B) / 3.0);
+      output.resize(output.getRows() + 1, false);
+      output[output.getRows() - 1] = image_intensity;
+      if (image_intensity < min_intensity) min_intensity = image_intensity;
+      if (image_intensity > max_intensity) max_intensity = image_intensity;
+    }
+  }
+
+//  for (std::size_t i = 0; i < output.getRows(); ++i)
+//  {
+//    output[i] = (output[i] - min_intensity) / (max_intensity - min_intensity);
+//  }
+
+  return output;
+}
+
 void edge::project(const vpHomogeneousMatrix &cMo)
 {
   //the line corresponding to the edge, along with the edge vertex are transformed to 
@@ -353,6 +520,7 @@ void edge::split(unsigned int cols, unsigned int rows, vpCameraParameters &c, in
 
 void edge::find(vpImage<unsigned char> &I, vpCameraParameters &c, int ival)
 {
+  ROS_WARN("find called");
   //we compute the normal to the edge
   vpColVector normal(2);
   double theta = line.getTheta();
@@ -371,6 +539,7 @@ void edge::find(vpImage<unsigned char> &I, vpCameraParameters &c, int ival)
 
 void edge::find(vpImage<vpRGBa> &I, vpCameraParameters &c, int ival)
 {
+  ROS_WARN("find called");
   //we compute the normal to the edge
   vpColVector normal(2);
   double theta = line.getTheta();
@@ -382,6 +551,48 @@ void edge::find(vpImage<vpRGBa> &I, vpCameraParameters &c, int ival)
   for (std::size_t i = 0; i < points.size(); ++i)
   {
     points[i].find_rp(I, normal, ival);
+    points[i].convert_to_meters(c);
+    points[i].compute_distance(line);
+  }
+}
+
+void edge::find_from_descriptor(vpImage<unsigned char> &I, vpCameraParameters &c, int ival, const std::vector<vpColVector> &edge_descriptors)
+{
+  //we compute the normal to the edge
+  vpColVector normal(2);
+  double theta = line.getTheta();
+  normal[0] = cos(theta);
+  normal[1] = sin(theta);
+
+  //for each sampled point in the edge, search along the normal for the real image point
+  //and compute the distance feature point-to-line
+  for (std::size_t i = 0; i < points.size(); ++i)
+  {
+    //get the closest point descriptor
+    vpColVector descriptor = edge_descriptors[(int)(edge_descriptors.size() * i / points.size())];
+
+    points[i].find_rp(I, normal, ival, descriptor);
+    points[i].convert_to_meters(c);
+    points[i].compute_distance(line);
+  }
+}
+
+void edge::find_from_descriptor(vpImage<vpRGBa> &I, vpCameraParameters &c, int ival, const std::vector<vpColVector> &edge_descriptors)
+{
+  //we compute the normal to the edge
+  vpColVector normal(2);
+  double theta = line.getTheta();
+  normal[0] = cos(theta);
+  normal[1] = sin(theta);
+
+  //for each sampled point in the edge, search along the normal for the real image point
+  //and compute the distance feature point-to-line
+  for (std::size_t i = 0; i < points.size(); ++i)
+  {
+    //get the closest point descriptor
+    vpColVector descriptor = edge_descriptors[(int)(edge_descriptors.size() * i / points.size())];
+
+    points[i].find_rp(I, normal, ival, descriptor);
     points[i].convert_to_meters(c);
     points[i].compute_distance(line);
   }
