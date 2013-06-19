@@ -561,7 +561,7 @@ template<typename T>
       {
         for (std::size_t j = 0; j < m->edges_list[i]->points.size(); ++j)
         {
-          if ( ! detect_outliers_ || D_[cindex][cindex] > 0.5)
+          if ( ! detect_outliers_ || D_.getRows() == 0 || D_[cindex][cindex] > 0.5)
           {
             for (std::size_t k = 0; k < m->edges_list[i]->points[j].spoints.size(); ++k)
             {
@@ -601,7 +601,7 @@ template<typename T>
         for (std::size_t j = 0; j < m->edges_list[i]->points.size(); ++j)
         {
           vpColVector rp = m->edges_list[i]->points[j].rp;
-          if (! detect_outliers_ || D_[cindex][cindex] > 0.5)
+          if (! detect_outliers_ || D_.getRows() == 0 ||  D_[cindex][cindex] > 0.5)
           {
             //if there is confidence on this point, draw it in blue
             vpDisplay::displayCross(I, (int)rp[1], (int)rp[0], 8, vpColor::blue);
