@@ -34,17 +34,21 @@
 bool tfHomogeneousMatrix::update(ros::Time time)
 {
   tf::StampedTransform transform;
-  try{
-    listener_->lookupTransform(target_, origin_, time, transform);
-    stamp_ = transform.stamp_;
-    vpTranslationVector t(transform.getOrigin().x(), transform.getOrigin().y(), transform.getOrigin().z());
-    vpRotationMatrix R;
-    for (std::size_t r = 0; r < 3; ++r)
-      for (std::size_t c = 0; c < 3; ++c)
-        R[r][c] = transform.getBasis()[r][c];
-    vpHomogeneousMatrix::buildFrom(t, R);
+  try
+  {
+    if (listener_->waitForTransform(target_, origin_, time, ros::Duration(5.0)))
+    {
+      listener_->lookupTransform(target_, origin_, time, transform);
+      stamp_ = transform.stamp_;
+      vpTranslationVector t(transform.getOrigin().x(), transform.getOrigin().y(), transform.getOrigin().z());
+      vpRotationMatrix R;
+      for (std::size_t r = 0; r < 3; ++r)
+        for (std::size_t c = 0; c < 3; ++c)
+          R[r][c] = transform.getBasis()[r][c];
+      vpHomogeneousMatrix::buildFrom(t, R);
 
-    return true;
+      return true;
+    }
   }
   catch (tf::TransformException ex) {
   }
