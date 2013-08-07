@@ -94,7 +94,6 @@ void point2D::compute_distance(vpLine &line)
 
 void point2D::find_rp(vpImage<unsigned char> &I, vpColVector &n, int ival)
 {
-  ROS_WARN("find_rp called");
   //compute a set of pixels where to search for the gradient or image discontinuity
   spoints.clear();
   int pindex = -1;
@@ -197,17 +196,9 @@ void point2D::find_rp(vpImage<vpRGBa> &I, vpColVector &n, int ival, vpColVector 
     }
   }
 
-  std::cerr << "Searching " << descriptor.t() << std::endl << " along ";
-  for (std::size_t i = 0; i < spoints.size(); ++i)
-  {
-    std::cerr <<  (unsigned int)((I[(int)spoints[i][1]][(int)spoints[i][0]].R + I[(int)spoints[i][1]][(int)spoints[i][0]].G + I[(int)spoints[i][1]][(int)spoints[i][0]].B) / 3.0) << " ";
-  }
-  std::cerr << std::endl;
-  
   static double g = 0;
   double min_ssd = std::numeric_limits<double>::max();
   std::size_t min_ssd_index = 0;
-  std::cerr << " minsd ";
   for (std::size_t i = 0; i < spoints.size(); ++i)
   {
     double ssd_i = 0;
@@ -227,7 +218,6 @@ void point2D::find_rp(vpImage<vpRGBa> &I, vpColVector &n, int ival, vpColVector 
       }
     }
     ssd_i = sqrt(ssd_i);
-    std::cerr << ssd_i << " ";
     if (ssd_i < min_ssd)
     {
       min_ssd = ssd_i;
@@ -235,15 +225,12 @@ void point2D::find_rp(vpImage<vpRGBa> &I, vpColVector &n, int ival, vpColVector 
     }
   }
 
-  std::cerr << std::endl << " min_index is " << min_ssd_index << std::endl << std::endl;
-
   maxgrad = std::numeric_limits<double>::max();
   rp = spoints[min_ssd_index];
 }
 
 void point2D::find_rp(vpImage<vpRGBa> &I, vpColVector &n, int ival)
 {
-  ROS_WARN("find_rp called");
   //compute a set of pixels where to search for the gradient or image discontinuity
   spoints.clear();
   int pindex = -1;
@@ -520,7 +507,6 @@ void edge::split(unsigned int cols, unsigned int rows, vpCameraParameters &c, in
 
 void edge::find(vpImage<unsigned char> &I, vpCameraParameters &c, int ival)
 {
-  ROS_WARN("find called");
   //we compute the normal to the edge
   vpColVector normal(2);
   double theta = line.getTheta();
@@ -539,7 +525,6 @@ void edge::find(vpImage<unsigned char> &I, vpCameraParameters &c, int ival)
 
 void edge::find(vpImage<vpRGBa> &I, vpCameraParameters &c, int ival)
 {
-  ROS_WARN("find called");
   //we compute the normal to the edge
   vpColVector normal(2);
   double theta = line.getTheta();

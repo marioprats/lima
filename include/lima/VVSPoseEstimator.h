@@ -359,7 +359,6 @@ template<typename T>
 template<typename T>
   void VVSPoseEstimator<T>::find_edges(Object *o)
   {
-    ROS_WARN("find_edges called");
     EdgesModel *m = dynamic_cast<EdgesModel*>(o->model->geometry);
 
     //project the selected model edges, find distance to real edges
@@ -391,12 +390,10 @@ template<typename T>
       if (m->edges_list[i]->active)
       {
         std::vector<vpColVector> edge_descriptors;
-        std::cerr << std::endl << "Edges descriptors for edge " << i <<  std::endl;
         for (std::size_t d = 0; d  <descriptors.size(); ++d)
         {
           if (descriptors[d][0] == i)
           {
-            std::cerr << "  - " << descriptors[d].t() << std::endl;
             edge_descriptors.push_back(descriptors[d]);
           }
         }
@@ -427,7 +424,6 @@ template<typename T>
         {
           if (m->edges_list[i]->points[j].maxgrad < mingrad_)
           {
-            ROS_WARN_STREAM("Discarding " << i << " " << j << " because of small gradient " << m->edges_list[i]->points[j].maxgrad);
             D[index][index] = 0;
           }
           index++;
