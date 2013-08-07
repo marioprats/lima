@@ -30,7 +30,6 @@
  */
 
 #include <lima/BBoxEdgesModel.h>
-#include <GL/glut.h>
 #include <visp/vpRGBa.h>
 
 void BBoxEdgesModel::computeEdges()

@@ -31,13 +31,13 @@
 
 #include <lima/ODEGLVirtualCamera.h>
 #include <lima/Joint.h>
-#include <GL/glut.h>
 #include <stdlib.h>
 
 #include <iostream>
 using namespace std;
 
 #ifdef _USE_GL_
+#include <GL/glut.h>
 
 ODEGLVirtualCamera::ODEGLVirtualCamera(ODEGLScene *scene, int width, int height)
 : VirtualCamera(scene,width,height)
